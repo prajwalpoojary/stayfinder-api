@@ -39,6 +39,17 @@ const createHotelSchema = z.object({
   rating: z.number().min(0).max(5).optional(),
 });
 
+const updateHotelSchema = z.object({
+  name: z.string().min(1, 'name is required').optional(),
+  city: z.string().min(1, 'city is required').optional(),
+  rating: z.number().min(0).max(5).optional(),
+})
+.strict()
+.refine(
+  data => Object.keys(data).length > 0,
+  { message: 'At least one field must be provided for update' }
+);
+
 class AppError extends Error {
   constructor(statusCode, message, errors = null) {
     super(message);
@@ -67,7 +78,7 @@ function validateBody(schema) {
 }
 
 function errorHandler(err, req, res, next) {
-  // console.error(err);
+  console.error(err);
 
   const statusCode = err.statusCode || 500;
   const message = err.statusCode ? err.message : 'Something went wrong.';
@@ -110,6 +121,56 @@ app.get('/hotels/:id', async (req, res) => {
     }
 
     res.status(200).json(result.rows[0]);
+});
+
+app.patch('/hotels/:id', validateBody(updateHotelSchema), async (req, res) => {
+  const { id } = req.params;
+  const updateData = req.body;
+
+  const keys = Object.keys(updateData);
+  const setClause = keys
+    .map((key, index) => `"${key}" = $${index + 1}`)
+    .join(', ');
+
+  const idPlaceholderIndex = keys.length + 1;
+  const queryValues = [...Object.values(updateData), id];
+
+  const queryText = `
+      UPDATE hotels 
+      SET ${setClause}, updated_at = now()
+      WHERE id = $${idPlaceholderIndex} 
+      RETURNING *;
+  `;
+
+  const result = await pool.query(queryText, queryValues);
+
+  if (result.rowCount === 0) {
+    throw new AppError(404, `Hotel with ID ${id} not found`);
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      hotel: result.rows[0]
+    }
+  });
+});
+
+app.delete('/hotels/:id', async (req, res) => {
+  const { id } = req.params;
+  const result = await pool.query(`DELETE FROM hotels WHERE id = $1 RETURNING *`, [id]);
+
+  if (result.rowCount === 0) {
+    throw new AppError(404, `Hotel with ID ${id} not found.`);
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Hotel successfully deleted',
+    data: {
+      hotel: result.rows[0],
+    }
+  });
 });
 
 app.use(errorHandler);
