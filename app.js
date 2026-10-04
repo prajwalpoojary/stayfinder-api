@@ -39,6 +39,13 @@ const createHotelSchema = z.object({
   rating: z.number().min(0).max(5).optional(),
 });
 
+class AppError extends Error {
+  constructor(statusCode, message, errors = null) {
+    super(message);
+    this.statusCode = statusCode;
+    this.errors = errors;
+  }
+}
 
 function validateBody(schema) {
   return (req, res, next) => {
@@ -46,10 +53,11 @@ function validateBody(schema) {
 
     if (!result.success) {
       // Return a 400 Bad Request with the validation errors
-      return res.status(400).json({
-        status: 'fail',
-        errors: result.error.errors
-      });
+      // return res.status(400).json({
+      //   status: 'fail',
+      //   errors: result.error.errors
+      // });
+      throw new AppError(400, 'Validation failed', result.error.issues);
     }
 
     // Override req.body with the safely parsed/stripped data and proceed
@@ -58,23 +66,20 @@ function validateBody(schema) {
   };
 }
 
-class AppError extends Error {
-  constructor(statusCode, message) {
-    super(message);
-    this.statusCode = statusCode;
-  }
-}
-
 function errorHandler(err, req, res, next) {
-  console.error(err);
+  // console.error(err);
 
   const statusCode = err.statusCode || 500;
   const message = err.statusCode ? err.message : 'Something went wrong.';
 
-  res.status(statusCode).json({
-    status: 'error',
-    message,
-  });
+  const response = { status: 'error', message };
+  if (err.errors) response.errors = err.errors;
+
+  res.status(statusCode).json(response);
+  // res.status(statusCode).json({
+  //   status: 'error',
+  //   message,
+  // });
 }
 
 app.get('/health', (req, res) => {
