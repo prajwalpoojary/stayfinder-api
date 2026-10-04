@@ -58,6 +58,25 @@ function validateBody(schema) {
   };
 }
 
+class AppError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+function errorHandler(err, req, res, next) {
+  console.error(err);
+
+  const statusCode = err.statusCode || 500;
+  const message = err.statusCode ? err.message : 'Something went wrong.';
+
+  res.status(statusCode).json({
+    status: 'error',
+    message,
+  });
+}
+
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
@@ -81,10 +100,13 @@ app.get('/hotels/:id', async (req, res) => {
     const result = await pool.query('SELECT * FROM hotels WHERE id = $1', [id]);
 
     if (result.rows.length === 0) {
-        return res.status(404).json({ message: `Hotel with ID ${id} not found.` });
+        // return res.status(404).json({ message: `Hotel with ID ${id} not found.` });
+        throw new AppError(404, `Hotel with ID ${id} not found.`);
     }
 
     res.status(200).json(result.rows[0]);
 });
+
+app.use(errorHandler);
 
 module.exports = app;
