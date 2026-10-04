@@ -1,6 +1,7 @@
 const express = require('express');
 const app = express();
 const pool = require('./db');
+const { z } = require('zod');
 
 app.use(express.json());
 
@@ -32,6 +33,31 @@ const hotels = [
   }
 ];
 
+const createHotelSchema = z.object({
+  name: z.string().min(1, 'name is required'),
+  city: z.string().min(1, 'city is required'),
+  rating: z.number().min(0).max(5).optional(),
+});
+
+
+function validateBody(schema) {
+  return (req, res, next) => {
+    const result = schema.safeParse(req.body);
+
+    if (!result.success) {
+      // Return a 400 Bad Request with the validation errors
+      return res.status(400).json({
+        status: 'fail',
+        errors: result.error.errors
+      });
+    }
+
+    // Override req.body with the safely parsed/stripped data and proceed
+    req.body = result.data;
+    next();
+  };
+}
+
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
@@ -39,6 +65,15 @@ app.get('/health', (req, res) => {
 app.get('/hotels', async (req, res) => {
     const result = await pool.query('SELECT * FROM hotels');
     res.status(200).json(result.rows);
+});
+
+app.post('/hotels', validateBody(createHotelSchema), async (req, res) => {
+  const { name, city, rating } = req.body;
+  const result = await pool.query(
+    'INSERT INTO hotels (name, city, rating) VALUES ($1, $2, $3) RETURNING *',
+    [name, city, rating]
+  );
+  res.status(201).json(result.rows[0]);
 });
 
 app.get('/hotels/:id', async (req, res) => {
